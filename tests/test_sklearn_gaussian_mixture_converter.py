@@ -41,7 +41,7 @@ class TestGaussianMixtureConverter(unittest.TestCase):
         except OrtFail as e:
             raise RuntimeError('Issue {}\n{}'.format(e, str(onx)))
         got = sess.run(None, {'X': X})
-        self.assertEqual(len(got), 3)
+        self.assertEqual(len(got), 4)
         np.testing.assert_almost_equal(
             expp.ravel(), got[1].ravel(), decimal=decimal)
         np.testing.assert_almost_equal(

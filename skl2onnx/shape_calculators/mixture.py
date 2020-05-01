@@ -16,7 +16,7 @@ from ..common.utils import (
 
 def calculate_gaussian_mixture_output_shapes(operator):
     check_input_and_output_numbers(operator, input_count_range=1,
-                                   output_count_range=[2, 3])
+                                   output_count_range=[2, 4])
     check_input_and_output_types(
         operator, good_input_types=[
             FloatTensorType, Int64TensorType, DoubleTensorType])

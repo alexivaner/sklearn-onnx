@@ -158,11 +158,16 @@ def _parse_sklearn_simple_model(scope, model, inputs, custom_parsers=None):
                                                      scope.tensor_type())
         this_operator.outputs.append(label_variable)
         this_operator.outputs.append(prob_variable)
-        options = scope.get_options(model, dict(score_samples=False))
+        options = scope.get_options(model, dict(score_samples=False,combined_reducesum=False))
         if options['score_samples']:
             scores_var = scope.declare_local_variable(
                 'score_samples', scope.tensor_type())
             this_operator.outputs.append(scores_var)
+            
+        if options['combined_reducesum']:
+            reduced_var = scope.declare_local_variable(
+                'combined_reducesum', scope.tensor_type())
+            this_operator.outputs.append(reduced_var)
     else:
         # We assume that all scikit-learn operator produce a single output.
         variable = scope.declare_local_variable(
