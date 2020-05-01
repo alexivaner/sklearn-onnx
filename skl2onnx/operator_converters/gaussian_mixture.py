@@ -163,9 +163,9 @@ def convert_sklearn_gaussian_mixture(scope, operator, container):
     weighted_log_prob = OnnxAdd(OnnxAdd(mul, log_det, op_version=opv),
                                 log_weights, op_version=opv)
 
-    # labels
-    labels = OnnxArgMax(weighted_log_prob, axis=1,
-                        output_names=out[:1], op_version=opv)
+
+
+    #labels = OnnxArgMax(weighted_log_prob, axis=1,output_names=out[:1], op_version=opv)
 
     # def _estimate_log_prob_resp():
     # np.exp(log_resp)
@@ -198,6 +198,9 @@ def convert_sklearn_gaussian_mixture(scope, operator, container):
 
     # probabilities
     probs = OnnxExp(log_resp, output_names=out[1:2], op_version=opv)
+    
+    # labels
+    labels = OnnxExp(log_resp, output_names=out[:1], op_version=opv)
 
     # final
     labels.add_to(scope, container)
