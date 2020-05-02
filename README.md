@@ -9,7 +9,12 @@ Credit to [xiadupre](https://github.com/xadupre) and [phrabat](https://github.co
 
 
 ## What I modified and Why to do so?
-I just changed the gaussian-mixture part from this library to support Baraccuda-Unity since Baraccuda still could support just limited operation in ONNX but of course they will add new features soon.
+I just changed the gaussian-mixture part from this library to support Baraccuda-Unity since Baraccuda still could support just limited operation in ONNX but of course they will add new features soon.<br>
+### What are changed 
+ReduceLogSumExpx to -> y = exp(x) -> z = reduce_sum(y) -> log(z) for ReduceLogSumExp<br>
+and<br>
+ReduceSumSquarex to -> y = x^2 -> z = reduce_sum(y)<br>
+This is because ReduceLogSumExp and ReduceSumSquare still not supported by baraccuda.
 
 ### Here is my discussion with them
 [Baraccuda-Unity-Issue](https://github.com/Unity-Technologies/barracuda-release/issues/37)<br>
