@@ -14,8 +14,10 @@ except ImportError:
 from ..common._registration import register_converter
 from ..algebra.onnx_ops import (
     OnnxAdd, OnnxSub, OnnxMul, OnnxGemm, OnnxReduceSumSquare,
-    OnnxReduceLogSumExp, OnnxExp, OnnxArgMax, OnnxConcat,OnnxReduceSum, OnnxLog, OnnxPow
+    OnnxReduceLogSumExp, OnnxExp, OnnxArgMax, OnnxConcat,
+    OnnxReduceSum, OnnxLog, OnnxReduceMax, OnnxEqual, OnnxCast,OnnxMean
 )
+from ..proto import onnx_proto
 
 
 def convert_sklearn_gaussian_mixture(scope, operator, container):
@@ -36,7 +38,7 @@ def convert_sklearn_gaussian_mixture(scope, operator, container):
     add_score = options.get('score_samples', False)
     add_reduced = options.get('combined_reducesum', False)
     
-    if add_score and add_reduced and len(out) != 4:
+    if add_score and add_reduced and len(out) != 3:
         raise RuntimeError("3 outputs are expected.")
     if isinstance(op, BayesianGaussianMixture):
         raise NotImplementedError(
@@ -69,18 +71,12 @@ def convert_sklearn_gaussian_mixture(scope, operator, container):
             y = OnnxGemm(X, prec_chol.astype(container.dtype),
                          cst.astype(container.dtype), alpha=1.,
                          beta=1., op_version=opv)
-                         
-            if add_reduced:
-                y2s = OnnxMul(y, y)
-                y3s = OnnxReduceSum(y2s,axes=[1], op_version=opv)
-                ys.append(y3s)
-                # y2s = OnnxReduceSumSquare(y, axes=[1], op_version=opv)
-                # ys.append(y2s)
+            if combined_reducesum:
+                y2s = OnnxReduceSum(OnnxMul(y, y, op_version=opv),
+                                    axes=[1], op_version=opv)
             else:
-                y2s = OnnxMul(y, y)
-                y3s = OnnxReduceSum(y2s,axes=[1], op_version=opv)
-                ys.append(y3s)
-
+                y2s = OnnxReduceSumSquare(y, axes=[1], op_version=opv)
+            ys.append(y2s)
         log_prob = OnnxConcat(*ys, axis=1, op_version=opv)
 
     elif op.covariance_type == 'tied':
@@ -183,14 +179,19 @@ def convert_sklearn_gaussian_mixture(scope, operator, container):
                 output_names=out[2:3])          
         else:
             # log_prob_norm = OnnxReduceLogSumExp(
-                # weighted_log_prob, axes=[1], op_version=opv,
-                # output_names=out[2:3])
-                
-            z1 = OnnxExp(weighted_log_prob, op_version=opv)
-            z2 = OnnxReduceSum(z1,axes=[1], op_version=opv)
-            log_prob_norm = OnnxLog(
-                z2,op_version=opv,
-                output_names=out[2:3])
+            max_weight = OnnxReduceMax(weighted_log_prob, axes=[1], op_version=opv)
+            log_prob_norm_demax = OnnxLog(
+                OnnxReduceSum(
+                    OnnxExp(
+                        OnnxSub(weighted_log_prob, max_weight, op_version=opv),
+                        op_version=opv),
+                    axes=[1], op_version=opv),
+                op_version=opv)
+            # log_prob_norm = OnnxAdd(log_prob_norm_demax, max_weight,
+                                    # op_version=opv, output_names=out[2:3])        
+            log_prob_norm = OnnxAdd(log_prob_norm_demax, max_weight,
+                                    op_version=opv)
+            score=OnnxMean(log_prob_norm,  op_version=opv, output_names=out[2:3]) 
     else:
         log_prob_norm = OnnxReduceLogSumExp(
             weighted_log_prob, axes=[1], op_version=opv)
@@ -206,7 +207,7 @@ def convert_sklearn_gaussian_mixture(scope, operator, container):
     labels.add_to(scope, container)
     probs.add_to(scope, container)
     if add_score:
-        log_prob_norm.add_to(scope, container)
+        score.add_to(scope, container)
 
 
 register_converter('SklearnGaussianMixture', convert_sklearn_gaussian_mixture,
