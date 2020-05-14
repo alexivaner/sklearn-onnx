@@ -15,7 +15,7 @@ from ..common._registration import register_converter
 from ..algebra.onnx_ops import (
     OnnxAdd, OnnxSub, OnnxMul, OnnxGemm, OnnxReduceSumSquare,
     OnnxReduceLogSumExp, OnnxExp, OnnxArgMax, OnnxConcat,
-    OnnxReduceSum, OnnxLog, OnnxReduceMax, OnnxEqual, OnnxCast,OnnxMean
+    OnnxReduceSum, OnnxLog, OnnxReduceMax, OnnxEqual, OnnxCast,OnnxReduceMean,OnnxSum
 )
 from ..proto import onnx_proto
 
@@ -71,11 +71,9 @@ def convert_sklearn_gaussian_mixture(scope, operator, container):
             y = OnnxGemm(X, prec_chol.astype(container.dtype),
                          cst.astype(container.dtype), alpha=1.,
                          beta=1., op_version=opv)
-            if combined_reducesum:
-                y2s = OnnxReduceSum(OnnxMul(y, y, op_version=opv),
+            y2s = OnnxReduceSum(OnnxMul(y, y, op_version=opv),
                                     axes=[1], op_version=opv)
-            else:
-                y2s = OnnxReduceSumSquare(y, axes=[1], op_version=opv)
+
             ys.append(y2s)
         log_prob = OnnxConcat(*ys, axis=1, op_version=opv)
 
@@ -161,8 +159,18 @@ def convert_sklearn_gaussian_mixture(scope, operator, container):
 
 
 
-    #labels = OnnxArgMax(weighted_log_prob, axis=1,output_names=out[:1], op_version=opv)
-
+    mxlabels = OnnxReduceMax(weighted_log_prob, axes=[1], op_version=opv)
+    zeros = OnnxEqual(
+        OnnxSub(weighted_log_prob, mxlabels, op_version=opv),
+        np.array([0], dtype=container.dtype),
+        op_version=opv)
+    toint = OnnxCast(zeros, to=onnx_proto.TensorProto.INT64,
+                     op_version=opv)
+    mulind = OnnxMul(toint,
+                     np.arange(n_components).astype(np.int64),
+                     op_version=opv)
+    labels = OnnxReduceMax(mulind, axes=[1], output_names=out[:1],
+                           op_version=opv)
     # def _estimate_log_prob_resp():
     # np.exp(log_resp)
     # weighted_log_prob = self._estimate_weighted_log_prob(X)
@@ -171,37 +179,28 @@ def convert_sklearn_gaussian_mixture(scope, operator, container):
     #    log_resp = weighted_log_prob - log_prob_norm[:, np.newaxis]
 
     if add_score:
-        if add_reduced:
-            z1 = OnnxExp(weighted_log_prob, op_version=opv)
-            z2 = OnnxReduceSum(z1,axes=[1], op_version=opv)
-            log_prob_norm = OnnxLog(
-                z2,op_version=opv,
-                output_names=out[2:3])          
-        else:
-            # log_prob_norm = OnnxReduceLogSumExp(
-            max_weight = OnnxReduceMax(weighted_log_prob, axes=[1], op_version=opv)
-            log_prob_norm_demax = OnnxLog(
-                OnnxReduceSum(
-                    OnnxExp(
-                        OnnxSub(weighted_log_prob, max_weight, op_version=opv),
-                        op_version=opv),
-                    axes=[1], op_version=opv),
-                op_version=opv)
-            # log_prob_norm = OnnxAdd(log_prob_norm_demax, max_weight,
-                                    # op_version=opv, output_names=out[2:3])        
-            log_prob_norm = OnnxAdd(log_prob_norm_demax, max_weight,
-                                    op_version=opv)
-            score=OnnxMean(log_prob_norm,  op_version=opv, output_names=out[2:3]) 
-    else:
-        log_prob_norm = OnnxReduceLogSumExp(
-            weighted_log_prob, axes=[1], op_version=opv)
+       
+        # log_prob_norm = OnnxReduceLogSumExp(
+        max_weight = OnnxReduceMax(weighted_log_prob, axes=[1], op_version=opv)
+        log_prob_norm_demax = OnnxLog(
+            OnnxReduceSum(
+                OnnxExp(
+                    OnnxSub(weighted_log_prob, max_weight, op_version=opv),
+                    op_version=opv),
+                axes=[1], op_version=opv),
+            op_version=opv)
+        # log_prob_norm = OnnxAdd(log_prob_norm_demax, max_weight,
+                                # op_version=opv, output_names=out[2:3])        
+        log_prob_norm = OnnxAdd(log_prob_norm_demax, max_weight,
+                                op_version=opv)
+        score=OnnxReduceMean(log_prob_norm, op_version=opv, output_names=out[2:3]) 
+
     log_resp = OnnxSub(weighted_log_prob, log_prob_norm, op_version=opv)
 
     # probabilities
     probs = OnnxExp(log_resp, output_names=out[1:2], op_version=opv)
     
-    # labels
-    labels = OnnxExp(log_resp, output_names=out[:1], op_version=opv)
+
 
     # final
     labels.add_to(scope, container)
