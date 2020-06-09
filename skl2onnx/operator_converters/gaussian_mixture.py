@@ -15,7 +15,7 @@ from ..common._registration import register_converter
 from ..algebra.onnx_ops import (
     OnnxAdd, OnnxSub, OnnxMul, OnnxGemm, OnnxReduceSumSquare,
     OnnxReduceLogSumExp, OnnxExp, OnnxArgMax, OnnxConcat,
-    OnnxReduceSum, OnnxLog, OnnxReduceMax, OnnxEqual, OnnxCast
+    OnnxReduceSum, OnnxLog, OnnxReduceMax, OnnxEqual, OnnxCast,OnnxReduceMean
 )
 from ..proto import onnx_proto
 
@@ -206,7 +206,9 @@ def convert_sklearn_gaussian_mixture(scope, operator, container):
                 axes=[1], op_version=opv),
             op_version=opv)
         log_prob_norm = OnnxAdd(log_prob_norm_demax, max_weight,
-                                op_version=opv, output_names=out[2:3])
+                                op_version=opv)
+        score=OnnxReduceMean(log_prob_norm, op_version=opv, output_names=out[2:3]) 
+
     else:
         log_prob_norm = OnnxReduceLogSumExp(
             weighted_log_prob, axes=[1], op_version=opv,
@@ -220,7 +222,7 @@ def convert_sklearn_gaussian_mixture(scope, operator, container):
     labels.add_to(scope, container)
     probs.add_to(scope, container)
     if add_score:
-        log_prob_norm.add_to(scope, container)
+        score.add_to(scope, container)
 
 
 register_converter('SklearnGaussianMixture', convert_sklearn_gaussian_mixture,
